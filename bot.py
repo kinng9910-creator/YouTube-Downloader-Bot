@@ -8,7 +8,7 @@ from telegram.ext import (
 )
 
 # --- CONFIG ---
-TOKEN = "8252906228:AAFZZ7reJrdF_nkw4ojCCQAalTyQelNUuBE"
+TOKEN = "8471538027:AAFoWy4WtnS1uVMprC2UBjPTvybkRs7nP18"
 CHANNEL_ID = -1002876982200
 CHANNEL_LINK = "https://t.me/ZALIM_MODZ_OFFICIAL"
 

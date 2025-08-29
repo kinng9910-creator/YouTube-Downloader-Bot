@@ -2,9 +2,11 @@ services:
   - type: web
     name: youtube-downloader-bot
     env: python
-    plan: starter   # اگر آپ paid plan use کر رہے ہیں تو یہ لگائیں
+    plan: starter
     buildCommand: ""
     startCommand: "python main.py"
     envVars:
       - key: TOKEN
+        sync: false
+      - key: WEBHOOK_URL
         sync: false

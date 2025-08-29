@@ -1,7 +1,7 @@
 import logging
 import requests
 import asyncio
-import os  # ✅ یہ لائن ایڈ کریں
+import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder, ContextTypes, MessageHandler, filters,
@@ -9,7 +9,7 @@ from telegram.ext import (
 )
 
 # --- CONFIG ---
-TOKEN = os.getenv("TOKEN")  # ✅ یہ جگہ اپڈیٹ کریں
+TOKEN = os.getenv("TOKEN")  # ✅ Render Env سے لیں
 CHANNEL_ID = -1002876982200
 CHANNEL_LINK = "https://t.me/ZALIM_MODZ_OFFICIAL"
 
@@ -73,14 +73,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         if action == "mp3":
-            # ✅ MP3 download
             res = requests.get(MP3_API + url).json()
             if res.get("status") == "success":
                 audio_url = res["download_url"]
                 title = res["title"]
 
                 await context.bot.delete_message(chat_id=query.message.chat_id, message_id=wait_msg.message_id)
-
                 await context.bot.send_audio(
                     chat_id=query.message.chat_id,
                     audio=audio_url,
@@ -91,7 +89,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await query.edit_message_text("❌ Failed to fetch MP3.")
 
         elif action == "mp4":
-            # ✅ MP4 download using new API
             response = requests.get(MP4_API + url).json()
 
             if response.get("success"):
@@ -111,12 +108,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- POLLING FUNCTION ---
 async def poll_for_download(polling_url, wait_msg, video_name, update, context):
     try:
-        for i in range(20):  # Try for 20 attempts (around 100 seconds)
+        for i in range(20):
             poll_response = requests.get(polling_url).json()
-
             if poll_response.get("download_url"):
                 download_url = poll_response["download_url"]
-
                 await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=wait_msg.message_id)
 
                 button = InlineKeyboardMarkup([
@@ -125,7 +120,7 @@ async def poll_for_download(polling_url, wait_msg, video_name, update, context):
                 await context.bot.send_message(chat_id=update.effective_chat.id, text=f"🎬 {video_name}", reply_markup=button)
                 return
             else:
-                await asyncio.sleep(5)  # Wait 5 seconds and retry
+                await asyncio.sleep(5)
 
         await context.bot.send_message(chat_id=update.effective_chat.id, text="❌ Timeout: Video processing took too long.")
     except Exception as e:
@@ -156,7 +151,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- MAIN ---
 if __name__ == "__main__":
     app = ApplicationBuilder().token(TOKEN).build()
-
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(CallbackQueryHandler(button_handler))

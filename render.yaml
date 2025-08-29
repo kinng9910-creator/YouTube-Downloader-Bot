@@ -1,11 +1,10 @@
 services:
-  - type: worker
+  - type: web
     name: youtube-downloader-bot
     env: python
-    branch: main
-    buildCommand: pip install -r requirements.txt
-    startCommand: python main.py
-    plan: free
+    plan: starter   # اگر آپ paid plan use کر رہے ہیں تو یہ لگائیں
+    buildCommand: ""
+    startCommand: "python main.py"
     envVars:
       - key: TOKEN
         sync: false

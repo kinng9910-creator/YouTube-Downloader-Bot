@@ -1,77 +1,48 @@
-import os
-import time
-import asyncio
 import logging
-import uuid
-from fastapi import FastAPI
-from fastapi.responses import FileResponse, PlainTextResponse
+import requests
+import asyncio
+import os  # ✅ یہ لائن ایڈ کریں
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
-    Application, ApplicationBuilder, CommandHandler, MessageHandler,
-    CallbackQueryHandler, ContextTypes, filters
+    ApplicationBuilder, ContextTypes, MessageHandler, filters,
+    CallbackQueryHandler, CommandHandler
 )
-from pytube import YouTube
 
 # --- CONFIG ---
-BOT_TOKEN = os.getenv("8471538027:AAEAhqZFfvVXJfD52fOcWC5wNWO_LqpjuD0")
-CHANNEL_ID = int(os.getenv("CHANNEL_ID", "-1002876982200"))
-CHANNEL_LINK = os.getenv("CHANNEL_LINK", "https://t.me/ZALIM_MODZ_OFFICIAL")
-ADMIN_ID = int(os.getenv("ADMIN_ID", "7747120004"))
-FILE_LIMIT = int(os.getenv("TG_FILE_LIMIT_BYTES", 40 * 1024 * 1024))  # 40MB
-TEMP_TTL = int(os.getenv("TEMP_TTL_SECONDS", 1800))  # 30 minutes
+TOKEN = os.getenv("TOKEN")  # ✅ یہ جگہ اپڈیٹ کریں
+CHANNEL_ID = -1002876982200
+CHANNEL_LINK = "https://t.me/ZALIM_MODZ_OFFICIAL"
 
-DOWNLOAD_DIR = "downloads"
-os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+MP3_API = "https://ytdownloader.anshppt19.workers.dev/?url="
+MP4_API = "https://chathuraytdl.netlify.app/ytdl?url="
 
 # --- LOGGING ---
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
 
-# --- FASTAPI APP ---
-app = FastAPI()
-temp_links = {}  # {file_id: {"path": path, "expire": ts}}
-
-@app.get("/")
-async def home():
-    return {"status": "running"}
-
-@app.get("/download/{file_id}")
-async def download(file_id: str):
-    if file_id not in temp_links:
-        return PlainTextResponse("❌ Link expired.", status_code=404)
-
-    file_info = temp_links[file_id]
-    if time.time() > file_info["expire"]:
-        try:
-            os.remove(file_info["path"])
-        except:
-            pass
-        del temp_links[file_id]
-        return PlainTextResponse("❌ Link expired.", status_code=410)
-
-    path = file_info["path"]
-    del temp_links[file_id]
-    return FileResponse(path, filename=os.path.basename(path), media_type="application/octet-stream")
-
-# --- TELEGRAM BOT ---
+# --- CHECK MEMBER ---
 async def is_user_member(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
     try:
         member = await context.bot.get_chat_member(chat_id=CHANNEL_ID, user_id=user_id)
-        return member.status in ["member", "administrator", "creator"]
+        return member.status in ['member', 'administrator', 'creator']
     except:
         return False
 
+# --- START ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if await is_user_member(user_id, context):
-        await update.message.reply_text("🎵 Send me a YouTube video link.")
+        await update.message.reply_text("🎵 Send me a YouTube video link to download MP3 or MP4.")
     else:
         buttons = InlineKeyboardMarkup([
             [InlineKeyboardButton("🔗 Join Channel", url=CHANNEL_LINK)],
             [InlineKeyboardButton("✅ I Joined", callback_data="check_join")]
         ])
-        await update.message.reply_text("🚫 You must join our channel:", reply_markup=buttons)
+        await update.message.reply_text("🚫 You must join our channel to use this bot:", reply_markup=buttons)
 
+# --- BUTTON HANDLER ---
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -79,50 +50,88 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if query.data == "check_join":
         if await is_user_member(user_id, context):
-            await query.edit_message_text("✅ Thank you! Now send me a YouTube link.")
+            await query.edit_message_text("✅ Thank you for joining!\nNow send me a YouTube video link to download.")
         else:
             buttons = InlineKeyboardMarkup([
                 [InlineKeyboardButton("🔗 Join Channel", url=CHANNEL_LINK)],
                 [InlineKeyboardButton("✅ I Joined", callback_data="check_join")]
             ])
-            await query.edit_message_text("❌ You're still not a member.", reply_markup=buttons)
+            await query.edit_message_text(
+                "❌ You're still not a member.\nPlease join the channel and then click 'I Joined'.",
+                reply_markup=buttons
+            )
         return
 
     action, url = query.data.split("|", 1)
-    wait_msg = await context.bot.send_message(chat_id=query.message.chat_id, text="⏳ Downloading...")
+
+    wait_msg = await context.bot.send_message(
+        chat_id=query.message.chat_id,
+        text="⏳ Please wait while we process your file..."
+    )
+
+    await asyncio.sleep(1)
 
     try:
-        yt = YouTube(url)
-        title = yt.title
         if action == "mp3":
-            stream = yt.streams.filter(only_audio=True).first()
-            file_path = stream.download(output_path=DOWNLOAD_DIR, filename=f"{uuid.uuid4()}.mp3")
+            # ✅ MP3 download
+            res = requests.get(MP3_API + url).json()
+            if res.get("status") == "success":
+                audio_url = res["download_url"]
+                title = res["title"]
 
-            await context.bot.delete_message(chat_id=query.message.chat_id, message_id=wait_msg.message_id)
-            await context.bot.send_audio(chat_id=query.message.chat_id, audio=open(file_path, "rb"), title=title)
-            os.remove(file_path)
+                await context.bot.delete_message(chat_id=query.message.chat_id, message_id=wait_msg.message_id)
+
+                await context.bot.send_audio(
+                    chat_id=query.message.chat_id,
+                    audio=audio_url,
+                    title=title,
+                    caption=f"🎧 {title}"
+                )
+            else:
+                await query.edit_message_text("❌ Failed to fetch MP3.")
 
         elif action == "mp4":
-            stream = yt.streams.get_highest_resolution()
-            file_path = stream.download(output_path=DOWNLOAD_DIR, filename=f"{uuid.uuid4()}.mp4")
+            # ✅ MP4 download using new API
+            response = requests.get(MP4_API + url).json()
 
-            if os.path.getsize(file_path) <= FILE_LIMIT:
-                await context.bot.delete_message(chat_id=query.message.chat_id, message_id=wait_msg.message_id)
-                await context.bot.send_video(chat_id=query.message.chat_id, video=open(file_path, "rb"), caption=title)
-                os.remove(file_path)
+            if response.get("success"):
+                video_name = response.get("title")
+                polling_url = response.get("instructions", {}).get("polling_endpoint")
+
+                if not polling_url:
+                    await query.edit_message_text("❌ Failed to get polling URL.")
+                    return
+
+                await poll_for_download(polling_url, wait_msg, video_name, update, context)
             else:
-                file_id = str(uuid.uuid4())
-                temp_links[file_id] = {"path": file_path, "expire": time.time() + TEMP_TTL}
-                public_url = os.getenv("PUBLIC_BASE_URL")
-                temp_url = f"{public_url}/download/{file_id}"
-
-                button = InlineKeyboardMarkup([[InlineKeyboardButton("📥 Download Video (Temporary)", url=temp_url)]])
-                await context.bot.delete_message(chat_id=query.message.chat_id, message_id=wait_msg.message_id)
-                await query.edit_message_text(f"⚠️ Video too large for Telegram.\n🎬 {title}", reply_markup=button)
-
+                await query.edit_message_text("❌ Failed to fetch MP4.")
     except Exception as e:
-        await context.bot.edit_message_text(chat_id=query.message.chat_id, message_id=wait_msg.message_id, text=f"❌ Error: {e}")
+        await query.edit_message_text(f"❌ Error: {str(e)}")
 
+# --- POLLING FUNCTION ---
+async def poll_for_download(polling_url, wait_msg, video_name, update, context):
+    try:
+        for i in range(20):  # Try for 20 attempts (around 100 seconds)
+            poll_response = requests.get(polling_url).json()
+
+            if poll_response.get("download_url"):
+                download_url = poll_response["download_url"]
+
+                await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=wait_msg.message_id)
+
+                button = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("📥 Download Video", url=download_url)]
+                ])
+                await context.bot.send_message(chat_id=update.effective_chat.id, text=f"🎬 {video_name}", reply_markup=button)
+                return
+            else:
+                await asyncio.sleep(5)  # Wait 5 seconds and retry
+
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="❌ Timeout: Video processing took too long.")
+    except Exception as e:
+        await context.bot.send_message(chat_id=update.effective_chat.id, text=f"❌ Error: {str(e)}")
+
+# --- HANDLE MESSAGE ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not await is_user_member(user_id, context):
@@ -130,28 +139,27 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("🔗 Join Channel", url=CHANNEL_LINK)],
             [InlineKeyboardButton("✅ I Joined", callback_data="check_join")]
         ])
-        await update.message.reply_text("🚫 You must join our channel:", reply_markup=buttons)
+        await update.message.reply_text("🚫 You must join our channel to use this bot:", reply_markup=buttons)
         return
 
     url = update.message.text.strip()
     if "youtube.com/watch" in url or "youtu.be/" in url:
-        keyboard = [[
-            InlineKeyboardButton("🎧 MP3 (Audio)", callback_data=f"mp3|{url}"),
-            InlineKeyboardButton("🎬 MP4 (Video)", callback_data=f"mp4|{url}")
-        ]]
-        await update.message.reply_text("👇 Choose format:", reply_markup=InlineKeyboardMarkup(keyboard))
+        keyboard = [
+            [
+                InlineKeyboardButton("🎧 MP3 (Audio)", callback_data=f"mp3|{url}"),
+                InlineKeyboardButton("🎬 MP4 (Video)", callback_data=f"mp4|{url}")
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text("👇 Choose format to download:", reply_markup=reply_markup)
 
-# --- STARTUP ---
-def run():
-    application = ApplicationBuilder().token(BOT_TOKEN).build()
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    application.add_handler(CallbackQueryHandler(button_handler))
+# --- MAIN ---
+if __name__ == "__main__":
+    app = ApplicationBuilder().token(TOKEN).build()
 
-    loop = asyncio.get_event_loop()
-    loop.create_task(application.initialize())
-    loop.create_task(application.start())
-    loop.create_task(application.updater.start_polling())
-    return app
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(CallbackQueryHandler(button_handler))
 
-app = run()
+    print("🚀 Bot is running...")
+    app.run_polling()
